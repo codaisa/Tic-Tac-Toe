@@ -38,7 +38,7 @@ const App: React.FC = () => {
   const { id } = useParams();
   const history = useNavigate();
 
-  const socket = io("ws://localhost:3001");
+  const socket = io("https://game-tic-tac-toee.herokuapp.com/");
   socket.connect();
 
   type Args = {
