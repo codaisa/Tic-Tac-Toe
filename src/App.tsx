@@ -12,7 +12,11 @@ type IPlayer = {
   wins?: number;
 };
 
-const App: React.FC = () => {
+type Props = {
+  socket: any;
+};
+
+const App: React.FC<Props> = (props: Props) => {
   const [firstPlayer, setFirstPlayer] = useState<IPlayer>();
   const [secondPlayer, setSecondPlayer] = useState<IPlayer>();
   const [turn, setTurn] = useState<IPlayer | undefined>(undefined);
@@ -20,6 +24,7 @@ const App: React.FC = () => {
   const [thisPlayer, setThisPlayer] = useState<IPlayer>();
   const [ties, setTies] = useState(0);
   const [inputValue, setInputValue] = useState<string | undefined>();
+  const [inputValueJoin, setInputValueJoin] = useState("");
   const [selectedChoice, setSelectedChoice] =
     useState<IPlayer["choice"]>("Circle");
   const [positions, setPositions] = useState<
@@ -38,8 +43,12 @@ const App: React.FC = () => {
   const { id } = useParams();
   const history = useNavigate();
 
-  const socket = io("https://game-tic-tac-toee.herokuapp.com/");
-  socket.connect();
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 800);
+  window.addEventListener("resize", () =>
+    setIsMobile(window.innerWidth <= 800)
+  );
+
+  const { socket } = props;
 
   type Args = {
     key: string;
@@ -126,11 +135,13 @@ const App: React.FC = () => {
       };
     }
 
-    socket.emit("clientEvent", {
-      key: id,
-      firstPlayerServer: newFirstPlayer,
-      secondPlayerServer: newSecondPlayer,
-    });
+    if (id) {
+      socket.emit("clientEvent", {
+        key: id,
+        firstPlayerServer: newFirstPlayer,
+        secondPlayerServer: newSecondPlayer,
+      });
+    }
 
     if (newFirstPlayer) {
       setFirstPlayer(newFirstPlayer);
@@ -227,7 +238,34 @@ const App: React.FC = () => {
   useEffect(() => {
     if (firstPlayer && secondPlayer && positions) {
       if (!id) {
-        setTurn(turn === firstPlayer ? secondPlayer : firstPlayer);
+        const newTurn = turn === firstPlayer ? secondPlayer : firstPlayer;
+
+        if (
+          firstPlayer &&
+          secondPlayer?.playerName === "CPU" &&
+          newTurn?.playerName === "CPU" &&
+          !id
+        ) {
+          const newRandomNumber = () => {
+            const randomNumber = parseInt(
+              (Math.random() * (8 - 0) + 0).toString()
+            );
+
+            if (Object.keys(positions[randomNumber]).length >= 1) {
+              newRandomNumber();
+            } else {
+              let newArr = positions;
+              newArr[randomNumber] = secondPlayer;
+              setPositions([...newArr]);
+              setTurn(newTurn);
+            }
+          };
+          newRandomNumber();
+        } else {
+          if (turn) {
+            setTurn(newTurn);
+          }
+        }
       }
       CheckIfWins();
     }
@@ -235,26 +273,20 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (winner && firstPlayer && secondPlayer) {
-      const newWinner =
-        winner[0].player.playerName === firstPlayer.playerName
-          ? setFirstPlayer({
-              ...firstPlayer,
-              wins: firstPlayer.wins ? firstPlayer.wins + 1 : 1,
-            })
-          : setSecondPlayer({
-              ...secondPlayer,
-              wins: secondPlayer.wins ? secondPlayer.wins + 1 : 1,
-            });
-
-      console.log("new", winner);
-      console.log("new", newWinner);
+      winner[0].player.playerName === firstPlayer.playerName
+        ? setFirstPlayer({
+            ...firstPlayer,
+            wins: firstPlayer.wins ? firstPlayer.wins + 1 : 1,
+          })
+        : setSecondPlayer({
+            ...secondPlayer,
+            wins: secondPlayer.wins ? secondPlayer.wins + 1 : 1,
+          });
     }
-
-    console.log("neww winner", winner);
   }, [winner]);
 
   useEffect(() => {
-    if (firstPlayer && !turn) {
+    if (firstPlayer && !turn && !id) {
       setTurn(firstPlayer);
     }
   }, [firstPlayer]);
@@ -347,11 +379,16 @@ const App: React.FC = () => {
             alignItems={"center"}
             justifyContent={"center"}
           >
-            {turn && turn.choice === "Circle" ? (
-              <CircleIcon scale="20px" background="#8197A1" />
-            ) : (
-              <XIcon scale="20px" background="#8197A1" />
+            {turn && (
+              <>
+                {turn.choice === "Circle" ? (
+                  <CircleIcon scale="20px" background="#8197A1" />
+                ) : (
+                  <XIcon scale="20px" background="#8197A1" />
+                )}
+              </>
             )}
+
             <Text color="#8197A1" fontSize={"18px"} marginLeft={"8px"}>
               TURN
             </Text>
@@ -364,13 +401,15 @@ const App: React.FC = () => {
               borderRadius={"8px"}
               onClick={() => {
                 setPositions([{}, {}, {}, {}, {}, {}, {}, {}, {}]);
-                socket.emit("clientEvent", {
-                  key: id,
-                  firstPlayerServer: firstPlayer,
-                  secondPlayerServer: secondPlayer,
-                  turn: firstPlayer,
-                  positionsServer: [{}, {}, {}, {}, {}, {}, {}, {}, {}],
-                });
+                if (id) {
+                  socket.emit("clientEvent", {
+                    key: id,
+                    firstPlayerServer: firstPlayer,
+                    secondPlayerServer: secondPlayer,
+                    turn: undefined,
+                    positionsServer: [{}, {}, {}, {}, {}, {}, {}, {}, {}],
+                  });
+                }
               }}
               alignItems={"center"}
               justifyContent={"center"}
@@ -404,11 +443,32 @@ const App: React.FC = () => {
               justifyContent={"center"}
               alignItems={"center"}
               onClick={() => {
+                if (!turn && thisPlayer) {
+                  let newArr = positions;
+                  newArr[key] = thisPlayer;
+                  setPositions([...newArr]);
+
+                  const newTurn =
+                    thisPlayer.playerName === firstPlayer?.playerName
+                      ? secondPlayer
+                      : firstPlayer;
+
+                  if (id) {
+                    socket.emit("clientEvent", {
+                      key: id,
+                      firstPlayerServer: firstPlayer,
+                      secondPlayerServer: secondPlayer,
+                      turn: newTurn,
+                      positionsServer: [...newArr],
+                    });
+                  }
+                }
+
                 if (
-                  positions[key] !== firstPlayer &&
-                  positions[key] !== secondPlayer &&
+                  positions[key]?.playerName !== firstPlayer?.playerName &&
+                  positions[key]?.playerName !== secondPlayer?.playerName &&
                   turn &&
-                  thisPlayer?.playerName === turn.playerName
+                  (id ? thisPlayer?.playerName === turn.playerName : true)
                 ) {
                   let newArr = positions;
                   newArr[key] = turn;
@@ -419,13 +479,15 @@ const App: React.FC = () => {
                       ? secondPlayer
                       : firstPlayer;
 
-                  socket.emit("clientEvent", {
-                    key: id,
-                    firstPlayerServer: firstPlayer,
-                    secondPlayerServer: secondPlayer,
-                    turn: newTurn,
-                    positionsServer: [...newArr],
-                  });
+                  if (id) {
+                    socket.emit("clientEvent", {
+                      key: id,
+                      firstPlayerServer: firstPlayer,
+                      secondPlayerServer: secondPlayer,
+                      turn: newTurn,
+                      positionsServer: [...newArr],
+                    });
+                  }
                 }
               }}
             >
@@ -463,6 +525,7 @@ const App: React.FC = () => {
             alignItems={"center"}
             justifyContent={"center"}
             flexDirection={"column"}
+            overflow={"hidden"}
           >
             <Text color="#1F3540" fontSize={"14px"}>
               X ({" "}
@@ -500,6 +563,7 @@ const App: React.FC = () => {
             alignItems={"center"}
             justifyContent={"center"}
             flexDirection={"column"}
+            overflow={"hidden"}
           >
             <Text color="#1F3540" fontSize={"14px"}>
               O ({" "}
@@ -541,7 +605,7 @@ const App: React.FC = () => {
           </Container>
         )}
         <Container
-          width={"480px"}
+          width={isMobile ? "308px" : "480px"}
           padding={"24px"}
           background={"#1F3540"}
           borderRadius={"8px"}
@@ -552,42 +616,53 @@ const App: React.FC = () => {
           {id ? (
             <>
               <Container marginBottom={"24px"}>
-                {[firstPlayer, secondPlayer].map((value, index) => (
-                  <Container key={index}>
-                    {value && (
-                      <>
-                        <Container
-                          flexDirection={"column"}
-                          alignItems={"center"}
-                        >
-                          <Container
-                            height={"48px"}
-                            width={"48px"}
-                            borderRadius={"50%"}
-                            alignItems={"center"}
-                            justifyContent={"center"}
-                          >
-                            {value.choice === "Circle" ? (
-                              <CircleIcon
-                                scale={"40px"}
-                                background={"#F2B237"}
-                              />
-                            ) : (
-                              <XIcon scale={"40px"} background={"#33C2BF"} />
-                            )}
-                          </Container>
-                          <Text
-                            fontSize={"18px"}
-                            color={"#ffffff"}
-                            marginTop={"8px"}
-                          >
-                            {value?.playerName || "Não definido"}
-                          </Text>
-                        </Container>
-                      </>
-                    )}
-                  </Container>
-                ))}
+                {firstPlayer || secondPlayer ? (
+                  <>
+                    {[firstPlayer, secondPlayer].map((value, index) => (
+                      <Container key={index}>
+                        {value && (
+                          <>
+                            <Container
+                              flexDirection={"column"}
+                              alignItems={"center"}
+                            >
+                              <Container
+                                height={"48px"}
+                                width={"48px"}
+                                borderRadius={"50%"}
+                                alignItems={"center"}
+                                justifyContent={"center"}
+                              >
+                                {value.choice === "Circle" ? (
+                                  <CircleIcon
+                                    scale={"40px"}
+                                    background={"#F2B237"}
+                                  />
+                                ) : (
+                                  <XIcon
+                                    scale={"40px"}
+                                    background={"#33C2BF"}
+                                  />
+                                )}
+                              </Container>
+                              <Text
+                                fontSize={"18px"}
+                                color={"#ffffff"}
+                                marginTop={"8px"}
+                              >
+                                {value?.playerName || "Não definido"}
+                              </Text>
+                            </Container>
+                          </>
+                        )}
+                      </Container>
+                    ))}
+                  </>
+                ) : (
+                  <Text fontSize={"18px"} color={"#d1d0d0"} marginTop={"8px"}>
+                    Ninguém entrou ainda =(
+                  </Text>
+                )}
               </Container>
               {(!firstPlayer || !secondPlayer) &&
                 inputValue !== "AlredySelected" && (
@@ -668,23 +743,33 @@ const App: React.FC = () => {
           )}
         </Container>
 
-        {id ? (
-          <></>
-        ) : (
+        {!id && (
           <>
             <Button
               background={"#F2B237"}
               padding={"12px"}
               borderRadius={"8px"}
               boxShadow={"0px 4px 4px rgba(0, 0, 0, 0.25);"}
-              width={"502px"}
+              width={isMobile ? "308px" : "502px"}
               alignItems={"center"}
               justifyContent={"center"}
               marginTop={"24px"}
-              onClick={() => {}}
+              onClick={() => {
+                setFirstPlayer({
+                  choice: selectedChoice,
+                  playerName: "Player 1",
+                  wins: 0,
+                });
+
+                setSecondPlayer({
+                  choice: selectedChoice === "X" ? "Circle" : "X",
+                  playerName: "CPU",
+                  wins: 0,
+                });
+              }}
             >
               <Text fontSize={"18px"} color={"#1D323D"}>
-                NEW GAME (VS CPU)
+                LOCAL VS CPU
               </Text>
             </Button>
 
@@ -693,7 +778,7 @@ const App: React.FC = () => {
               padding={"12px"}
               borderRadius={"8px"}
               boxShadow={"0px 4px 4px rgba(0, 0, 0, 0.25);"}
-              width={"502px"}
+              width={isMobile ? "308px" : "502px"}
               alignItems={"center"}
               justifyContent={"center"}
               marginTop={"24px"}
@@ -712,7 +797,7 @@ const App: React.FC = () => {
               }}
             >
               <Text fontSize={"18px"} color={"#1D323D"}>
-                NEW GAME (VS PLAYER LOCAL)
+                LOCAL VS LOCAL
               </Text>
             </Button>
 
@@ -721,7 +806,7 @@ const App: React.FC = () => {
               padding={"12px"}
               borderRadius={"8px"}
               boxShadow={"0px 4px 4px rgba(0, 0, 0, 0.25);"}
-              width={"502px"}
+              width={isMobile ? "308px" : "502px"}
               alignItems={"center"}
               justifyContent={"center"}
               marginTop={"24px"}
@@ -733,9 +818,34 @@ const App: React.FC = () => {
               }
             >
               <Text fontSize={"18px"} color={"#1D323D"}>
-                NEW GAME (VS PLAYER ONLINE)
+                NEW GAME ONLINE
               </Text>
             </Button>
+
+            <Text fontSize={"16px"} color={"#ffffff"} marginTop={"32px"}>
+              Alredy have a room? Enter
+            </Text>
+
+            <Container marginTop={"12px"} width={isMobile ? "308px" : "502px"}>
+              <Input
+                onChange={(event) => setInputValueJoin(event.target.value)}
+              />
+              <Button
+                background={"#8e33c2"}
+                padding={"12px"}
+                borderRadius={"8px"}
+                boxShadow={"0px 4px 4px rgba(0, 0, 0, 0.25);"}
+                width={"128px"}
+                alignItems={"center"}
+                justifyContent={"center"}
+                marginLeft={"12px"}
+                onClick={() => history("/Tic-Tac-Toe/" + inputValueJoin)}
+              >
+                <Text fontSize={"18px"} color={"#ffffff"}>
+                  JOIN
+                </Text>
+              </Button>
+            </Container>
           </>
         )}
       </Container>
@@ -794,8 +904,10 @@ const App: React.FC = () => {
               borderRadius={"8px"}
               boxShadow={"0px 4px 4px rgba(0, 0, 0, 0.25);"}
               onClick={() => {
+                setWinner(undefined);
                 setFirstPlayer(undefined);
                 setSecondPlayer(undefined);
+                history("/Tic-Tac-Toe/");
               }}
             >
               <Text fontSize={"18px"} color={"#1D323D"}>
@@ -812,13 +924,15 @@ const App: React.FC = () => {
                 setPositions([{}, {}, {}, {}, {}, {}, {}, {}, {}]);
                 setTies(ties + 1);
 
-                socket.emit("clientEvent", {
-                  key: id,
-                  firstPlayerServer: firstPlayer,
-                  secondPlayerServer: secondPlayer,
-                  turn: firstPlayer,
-                  positionsServer: [{}, {}, {}, {}, {}, {}, {}, {}, {}],
-                });
+                if (id) {
+                  socket.emit("clientEvent", {
+                    key: id,
+                    firstPlayerServer: firstPlayer,
+                    secondPlayerServer: secondPlayer,
+                    turn: undefined,
+                    positionsServer: [{}, {}, {}, {}, {}, {}, {}, {}, {}],
+                  });
+                }
               }}
             >
               <Text fontSize={"18px"} color={"#1D323D"}>
