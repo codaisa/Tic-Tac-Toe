@@ -4,7 +4,6 @@ import Container from "./components/Container";
 import Text from "./components/Text";
 import { useParams, useNavigate } from "react-router-dom";
 import Input from "./components/Input";
-import { io } from "socket.io-client";
 
 type IPlayer = {
   playerName?: string;
